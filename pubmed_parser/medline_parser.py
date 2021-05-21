@@ -418,6 +418,58 @@ def date_extractor(journal, year_info_only):
         return "-".join(str(x) for x in filter(None, [year, month, day]))
 
 
+def adate_extractor(article, year_info_only=False):
+    """Extract PubDate information from an Article in the Medline dataset.
+
+    Parameters
+    ----------
+    journal: Element
+        The 'Journal' field in the Medline dataset
+    year_info_only: bool
+        if True, this tool will only attempt to extract year information from PubDate.
+        if False, an attempt will be made to harvest all available PubDate information.
+        If only year and month information is available, this will yield a date of
+        the form 'YYYY-MM'. If year, month and day information is available,
+        a date of the form 'YYYY-MM-DD' will be returned.
+
+    Returns
+    -------
+    PubDate: str
+        PubDate extracted from an article.
+        Note: If year_info_only is False and a month could not be
+        extracted this falls back to year automatically.
+    """
+    day = None
+    month = None
+
+    issue_date = article.find("ArticleDate")
+
+    if not issue_date:
+        return None
+
+    if issue_date.find("Year") is not None:
+        year = issue_date.find("Year").text
+        if not year_info_only:
+            if issue_date.find("Month") is not None:
+                month = month_or_day_formater(issue_date.find("Month").text)
+                if issue_date.find("Day") is not None:
+                    day = month_or_day_formater(issue_date.find("Day").text)
+    elif issue_date.find("MedlineDate") is not None:
+        year_text = issue_date.find("MedlineDate").text
+        year = re.findall(r"\d{4}", year_text)
+        if len(year) >= 1:
+            year = year[0]
+        else:
+            year = ""
+    else:
+        year = ""
+
+    if year_info_only or month is None:
+        return year
+    else:
+        return "-".join(str(x) for x in filter(None, [year, month, day]))
+
+
 def parse_references(pubmed_article, reference_list):
     """Parse references from Pubmed Article
 
@@ -553,6 +605,10 @@ def parse_article_info(
     doi = parse_doi(pubmed_article)
     references = parse_references(pubmed_article, reference_list)
     pubdate = date_extractor(journal, year_info_only)
+    article_date = adate_extractor(article, year_info_only)
+    if article_date:
+        if len(article_date) > len(pubdate):
+            pubdate = article_date
     mesh_terms = parse_mesh_terms(medline)
     publication_types = parse_publication_types(medline)
     chemical_list = parse_chemical_list(medline)
@@ -565,6 +621,7 @@ def parse_article_info(
         "journal": journal_name,
         "authors": authors,
         "pubdate": pubdate,
+        "artdate": article_date,
         "pmid": pmid,
         "mesh_terms": mesh_terms,
         "publication_types": publication_types,
